@@ -1,0 +1,67 @@
+name: Build Custom OS
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_name:
+        description: 'CherieOS'
+        required: true
+        default: 'cherieos'
+      os_banner:
+        description: 'Cherie Greetings to you'
+        required: true
+        default: 'Welcome to CherieOS (Instant Sandbox)'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Build Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev bc rsync file wget cpio
+
+      - name: Download Buildroot
+        run: |
+          git clone --depth 1 https://github.com/buildroot/buildroot.git
+          cd buildroot
+
+      - name: Configure Target & Custom Prompt
+        run: |
+          cd buildroot
+
+          # 1. Base 32-bit x86 configuration
+          make qemu_x86_defconfig
+
+          # 2. Set Hostname and Banner
+          ./utils/config --set-str BR2_TARGET_GENERIC_HOSTNAME "${{ github.event.inputs.os_name }}"
+          ./utils/config --set-str BR2_TARGET_GENERIC_ISSUE "=====================================\n  ${{ github.event.inputs.os_banner }}\n=====================================\n"
+          
+          # 3. Auto-login as root (No typing 'root' required!)
+          ./utils/config --set-str BR2_TARGET_GENERIC_GETTY_OPTIONS "-a root"
+
+          # 4. Create custom /etc/profile to force 'cherieos:~# '
+          mkdir -p custom_overlay/etc
+          cat << 'EOF' > custom_overlay/etc/profile
+          export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+          export PS1='\h:\w# '
+          EOF
+
+          # Tell Buildroot to merge our custom profile into the OS
+          ./utils/config --set-str BR2_ROOTFS_OVERLAY "custom_overlay"
+
+          # 5. Embed root filesystem directly into the kernel for instant boot
+          ./utils/config --enable BR2_TARGET_ROOTFS_INITRAMFS
+
+          make olddefconfig
+
+      - name: Compile Operating System
+        run: |
+          cd buildroot
+          make -j$(nproc)
+
+      - name: Upload Finished bzImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.os_name }}-bzImage
+          path: buildroot/output/images/bzImage
