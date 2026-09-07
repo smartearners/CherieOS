@@ -32,6 +32,13 @@ jobs:
 
           # 1. Base 32-bit x86 configuration
           make qemu_x86_defconfig
+          
+          # --- SPEED BOOST: Use pre-built compiler (cuts build from 45m to 5m) ---
+          ./utils/config --disable BR2_TOOLCHAIN_BUILDROOT
+          ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL
+          ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL_BOOTLIN
+          ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_X86_I686_GLIBC_STABLE
+          # ----------------------------------------------------------------------
 
           # 2. Set Hostname and Banner
           ./utils/config --set-str BR2_TARGET_GENERIC_HOSTNAME "${{ github.event.inputs.os_name }}"
