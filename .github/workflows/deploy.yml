@@ -45,7 +45,7 @@ jobs:
           ./utils/config --set-str BR2_TARGET_GENERIC_ISSUE "=====================================\n  ${{ github.event.inputs.os_banner }}\n=====================================\n"
           
           # 3. Auto-login as root (No typing 'root' required!)
-          ./utils/config --set-str BR2_TARGET_GENERIC_GETTY_OPTIONS "-a root"
+          ./utils/config --set-str BR2_TARGET_GENERIC_GETTY_OPTIONS "-n -l /bin/sh"
 
           # 4. Create custom /etc/profile to force 'cherieos:~# '
           mkdir -p custom_overlay/etc
