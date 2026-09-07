@@ -52,12 +52,15 @@ jobs:
           ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL_BOOTLIN
           ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_X86_I686_GLIBC_STABLE
           # ----------------------------------------------------------------------
+          
           # --- ENABLE EXTRA NATIVE TOOLS ---
           ./utils/config --enable BR2_PACKAGE_NANO               # Classic text editor
           ./utils/config --enable BR2_PACKAGE_HTOP               # Visual process & RAM monitor
           ./utils/config --enable BR2_PACKAGE_TREE               # Visual directory tree viewer
-          ./utils/config --enable BR2_PACKAGE_CURL               # Network download tool
-          ./utils/config --enable BR2_PACKAGE_OPENSSH_CLIENT     # SSH into servers from browser
+          ./utils/config --enable BR2_PACKAGE_LIBCURL            # cURL Library (fixed modern name)
+          ./utils/config --enable BR2_PACKAGE_LIBCURL_CURL       # cURL CLI utility
+          ./utils/config --enable BR2_PACKAGE_OPENSSH            # OpenSSH parent package
+          ./utils/config --enable BR2_PACKAGE_OPENSSH_CLIENT     # SSH client
           # ---------------------------------
 
           # 2. Set Hostname
@@ -106,7 +109,7 @@ jobs:
           cp -r bios public/
           cp buildroot/output/images/bzImage public/
 
-          # If tools.img was committed, use it; otherwise create a default one
+          # If tools.img was committed, copy it; otherwise generate a clean 16M disk
           if [ -f tools.img ]; then
             cp tools.img public/
           else
