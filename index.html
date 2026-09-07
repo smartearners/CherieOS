@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>CherieOS - Portable Sandbox</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h2 {
+            margin-bottom: 8px;
+        }
+
+        /* Controls Panel */
+        .controls {
+            background: #1e1e1e;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        button {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background-color: #1d4ed8;
+        }
+
+        .btn-save {
+            background-color: #059669;
+        }
+
+        .btn-save:hover {
+            background-color: #047857;
+        }
+
+        /* Screen Container */
+        #screen_container {
+            border: 2px solid #333;
+            background: #000;
+            width: 720px;
+            height: 400px;
+            cursor: text;
+            user-select: none;
+            outline: none;
+        }
+
+        #status {
+            margin-top: 8px;
+            color: #9ca3af;
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Sandboxed CherieOS</h2>
+
+    <!-- Top Action Panel -->
+    <div class="controls" id="startup_panel">
+        <button id="btn_clean" onclick="startClean()">🚀 Start CherieOS</button>
+        <span>|</span>
+        <label for="state_file" style="font-size: 14px;">Resume Session:</label>
+        <input type="file" id="state_file" accept=".bin">
+        <button id="btn_load" onclick="startFromSavedState()">📂 Load Session</button>
+    </div>
+
+    <!-- In-Session Controls -->
+    <div class="controls" id="running_panel" style="display: none;">
+        <button class="btn-save" onclick="saveSession()">💾 Save Session to File</button>
+        <button onclick="emulator.restart()">🔄 Reboot</button>
+        <button onclick="fullscreen()">⛶ Fullscreen</button>
+    </div>
+
+    <div id="status">Click "Start CherieOS" to launch into your custom OS.</div>
+
+    <!-- v86 Display Container -->
+    <div id="screen_container">
+        <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+        <canvas style="display: none"></canvas>
+    </div>
+
+    <script src="libv86.js"></script>
+    <script>
+        var emulator = null;
+        var V86Class = window.V86 || window.V86Starter;
+
+        function getBaseConfig() {
+            return {
+                wasm_path: "v86.wasm",
+                memory_size: 256 * 1024 * 1024,
+                vga_memory_size: 8 * 1024 * 1024,
+                screen_container: document.getElementById("screen_container"),
+                bios: { url: "bios/seabios.bin" },
+                vga_bios: { url: "bios/vgabios.bin" },
+                network_relay_url: "wss://relay.widgetry.org/",
+                autostart: true,
+            };
+        }
+
+        function switchPanels() {
+            document.getElementById("startup_panel").style.display = "none";
+            document.getElementById("running_panel").style.display = "flex";
+            document.getElementById("status").innerText = "CherieOS is running. Click inside the terminal to type.";
+
+            // Auto-focus keyboard on click
+            document.getElementById("screen_container").onclick = function () {
+                var textarea = document.querySelector("#screen_container textarea");
+                if (textarea) textarea.focus();
+            };
+        }
+
+        // 1. Direct Kernel Boot into CherieOS (Sub-2s boot!)
+        function startClean() {
+            if (!V86Class) return alert("v86 library failed to load.");
+            switchPanels();
+
+            var config = getBaseConfig();
+
+            // DIRECT KERNEL BOOT CONFIGURATION:
+            config.bzimage = { url: "bzImage" };
+            config.cmdline = "quiet loglevel=0 nomodeset acpi=off pnpbios=off noapic nolapic clocksource=pit tsc=unstable console=tty1 console=ttyS0 rw";
+
+            emulator = new V86Class(config);
+        }
+
+        // 2. Resume from saved snapshot
+        function startFromSavedState() {
+            if (!V86Class) return alert("v86 library failed to load.");
+            var fileInput = document.getElementById("state_file");
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert("Please select a saved .bin file first.");
+                return;
+            }
+
+            var file = fileInput.files[0];
+            var reader = new FileReader();
+
+            document.getElementById("status").innerText = "Reading state file...";
+
+            reader.onload = function (e) {
+                switchPanels();
+                var config = getBaseConfig();
+                config.initial_state = { buffer: e.target.result };
+                emulator = new V86Class(config);
+                emulator.add_listener("serial0-output-char", function (char) {
+                    console.log(char);
+                });
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 3. Save Session
+        function saveSession() {
+            if (!emulator) return;
+
+            document.getElementById("status").innerText = "Saving session...";
+
+            emulator.save_state(function (err, state) {
+                if (err) {
+                    alert("Failed to save state: " + err);
+                    document.getElementById("status").innerText = "Save failed.";
+                    return;
+                }
+
+                var blob = new Blob([state], { type: "application/octet-stream" });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement("a");
+                a.href = url;
+                a.download = "cherieos-session-" + new Date().toISOString().slice(0, 10) + ".bin";
+                a.click();
+                URL.revokeObjectURL(url);
+
+                document.getElementById("status").innerText = "Session saved!";
+            });
+        }
+
+        function fullscreen() {
+            var el = document.getElementById("screen_container");
+            if (el.requestFullscreen) el.requestFullscreen();
+        }
+    </script>
+</body>
+
+</html>
