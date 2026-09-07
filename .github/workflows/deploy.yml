@@ -40,21 +40,32 @@ jobs:
           ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_X86_I686_GLIBC_STABLE
           # ----------------------------------------------------------------------
 
-          # 2. Set Hostname and Banner
+          # 2. Set Hostname
           ./utils/config --set-str BR2_TARGET_GENERIC_HOSTNAME "${{ github.event.inputs.os_name }}"
-          ./utils/config --set-str BR2_TARGET_GENERIC_ISSUE "=====================================\n  ${{ github.event.inputs.os_banner }}\n=====================================\n"
           
-          # 3. Auto-login as root (No typing 'root' required!)
+          # 3. Auto-login as root directly to the shell
           ./utils/config --set-str BR2_TARGET_GENERIC_GETTY_OPTIONS "-n -l /bin/sh"
 
-          # 4. Create custom /etc/profile to force 'cherieos:~# '
+          # 4. Create custom overlay folder
           mkdir -p custom_overlay/etc
-          cat << 'EOF' > custom_overlay/etc/profile
-          export PATH=/bin:/sbin:/usr/bin:/usr/sbin
-          export PS1='\h:\w# '
-          EOF
 
-          # Tell Buildroot to merge our custom profile into the OS
+          # Custom /etc/issue: (Replaces 'Welcome to Buildroot' without YAML syntax errors)
+          echo "=====================================================" > custom_overlay/etc/issue
+          echo "       ___ _               _      ___  ____  " >> custom_overlay/etc/issue
+          echo "      / __| |_  ___ _ _ (_)___  / _ \/ ___| " >> custom_overlay/etc/issue
+          echo "     | (__| ' \/ -_) '_|| / -_)| (_) \___ \ " >> custom_overlay/etc/issue
+          echo "      \___|_||_\___|_|  |_\___| \___/|____/ " >> custom_overlay/etc/issue
+          echo "                                            " >> custom_overlay/etc/issue
+          echo "         CherieOS - Sandboxed Web Terminal   " >> custom_overlay/etc/issue
+          echo "=====================================================" >> custom_overlay/etc/issue
+
+          # Custom /etc/profile: Clears boot text and shows banner
+          echo "export PATH=/bin:/sbin:/usr/bin:/usr/sbin" > custom_overlay/etc/profile
+          echo "clear" >> custom_overlay/etc/profile
+          echo "cat /etc/issue" >> custom_overlay/etc/profile
+          echo "export PS1='\h:\w# '" >> custom_overlay/etc/profile
+
+          # Tell Buildroot to merge our custom profile and issue into the OS
           ./utils/config --set-str BR2_ROOTFS_OVERLAY "custom_overlay"
 
           # 5. Embed root filesystem directly into the kernel for instant boot
