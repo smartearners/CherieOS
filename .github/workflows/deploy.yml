@@ -1,4 +1,4 @@
-name: Build Custom OS
+name: Build and Deploy CherieOS
 
 on:
   workflow_dispatch:
@@ -12,14 +12,27 @@ on:
         required: true
         default: 'Welcome to CherieOS (Instant Sandbox)'
 
+# Permissions required for GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Install Build Dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev bc rsync file wget cpio
+          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev bc rsync file wget cpio e2fsprogs
 
       - name: Download Buildroot
         run: |
@@ -33,12 +46,19 @@ jobs:
           # 1. Base 32-bit x86 configuration
           make qemu_x86_defconfig
           
-          # --- SPEED BOOST: Use pre-built compiler (cuts build from 45m to 5m) ---
+          # --- SPEED BOOST: Use pre-built compiler ---
           ./utils/config --disable BR2_TOOLCHAIN_BUILDROOT
           ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL
           ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL_BOOTLIN
           ./utils/config --enable BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_X86_I686_GLIBC_STABLE
           # ----------------------------------------------------------------------
+          # --- ENABLE EXTRA NATIVE TOOLS ---
+          ./utils/config --enable BR2_PACKAGE_NANO               # Classic text editor
+          ./utils/config --enable BR2_PACKAGE_HTOP               # Visual process & RAM monitor
+          ./utils/config --enable BR2_PACKAGE_TREE               # Visual directory tree viewer
+          ./utils/config --enable BR2_PACKAGE_CURL               # Network download tool
+          ./utils/config --enable BR2_PACKAGE_OPENSSH_CLIENT     # SSH into servers from browser
+          # ---------------------------------
 
           # 2. Set Hostname
           ./utils/config --set-str BR2_TARGET_GENERIC_HOSTNAME "${{ github.event.inputs.os_name }}"
@@ -49,7 +69,7 @@ jobs:
           # 4. Create custom overlay folder
           mkdir -p custom_overlay/etc
 
-          # Custom /etc/issue: (Replaces 'Welcome to Buildroot' without YAML syntax errors)
+          # Custom /etc/issue
           echo "=====================================================" > custom_overlay/etc/issue
           echo "       ___ _               _      ___  ____  " >> custom_overlay/etc/issue
           echo "      / __| |_  ___ _ _ (_)___  / _ \/ ___| " >> custom_overlay/etc/issue
@@ -59,16 +79,15 @@ jobs:
           echo "         CherieOS - Sandboxed Web Terminal   " >> custom_overlay/etc/issue
           echo "=====================================================" >> custom_overlay/etc/issue
 
-          # Custom /etc/profile: Clears boot text and shows banner
+          # Custom /etc/profile
           echo "export PATH=/bin:/sbin:/usr/bin:/usr/sbin" > custom_overlay/etc/profile
           echo "clear" >> custom_overlay/etc/profile
           echo "cat /etc/issue" >> custom_overlay/etc/profile
           echo "export PS1='\h:\w# '" >> custom_overlay/etc/profile
 
-          # Tell Buildroot to merge our custom profile and issue into the OS
           ./utils/config --set-str BR2_ROOTFS_OVERLAY "custom_overlay"
 
-          # 5. Embed root filesystem directly into the kernel for instant boot
+          # 5. Embed root filesystem directly into the kernel
           ./utils/config --enable BR2_TARGET_ROOTFS_INITRAMFS
 
           make olddefconfig
@@ -78,8 +97,35 @@ jobs:
           cd buildroot
           make -j$(nproc)
 
-      - name: Upload Finished bzImage Artifact
-        uses: actions/upload-artifact@v4
+      - name: Bundle Web Assets for GitHub Pages
+        run: |
+          mkdir -p public
+          cp index.html public/
+          cp libv86.js public/
+          cp v86.wasm public/
+          cp -r bios public/
+          cp buildroot/output/images/bzImage public/
+
+          # If tools.img was committed, use it; otherwise create a default one
+          if [ -f tools.img ]; then
+            cp tools.img public/
+          else
+            mkdir -p empty_tools
+            mkfs.ext4 -d empty_tools -F public/tools.img 16M
+          fi
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: ${{ github.event.inputs.os_name }}-bzImage
-          path: buildroot/output/images/bzImage
+          path: public/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,10 @@
+#!/bin/sh
+echo "=========================================="
+echo "        CherieOS System Overview          "
+echo "=========================================="
+echo "OS Name    : $(hostname)"
+echo "Kernel     : $(uname -r)"
+echo "Uptime     : $(uptime | awk '{print $3}')"
+echo "RAM Used   : $(free -m | awk '/Mem:/ {print $3 "MB / " $2 "MB"}')"
+echo "Disk Free  : $(df -h / | awk 'NR==2 {print $4}')"
+echo "=========================================="

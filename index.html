@@ -62,14 +62,24 @@
             width: 720px;
             height: 400px;
             cursor: text;
-            user-select: none;
+            user-select: text;
             outline: none;
+        }
+
+        #screen_container div {
+            user-select: text;
         }
 
         #status {
             margin-top: 8px;
             color: #9ca3af;
             font-size: 13px;
+        }
+
+        #screen_container,
+        #screen_container div {
+            user-select: text !important;
+            -webkit-user-select: text !important;
         }
     </style>
 </head>
@@ -91,6 +101,7 @@
         <button class="btn-save" onclick="saveSession()">💾 Save Session to File</button>
         <button onclick="emulator.restart()">🔄 Reboot</button>
         <button onclick="fullscreen()">⛶ Fullscreen</button>
+        <button onclick="pasteClipboard()">📋 Paste</button>
     </div>
 
     <div id="status">Click "Start CherieOS" to launch into your custom OS.</div>
@@ -138,9 +149,10 @@
 
             var config = getBaseConfig();
 
-            // DIRECT KERNEL BOOT CONFIGURATION:
+            // DIRECT KERNEL BOOT:
             config.bzimage = { url: "bzImage" };
             config.cmdline = "quiet loglevel=0 nomodeset acpi=off pnpbios=off noapic nolapic clocksource=pit tsc=unstable console=tty1 console=ttyS0 rw";
+            config.hda = { url: "tools.img", async: false };
 
             emulator = new V86Class(config);
         }
@@ -202,6 +214,42 @@
             var el = document.getElementById("screen_container");
             if (el.requestFullscreen) el.requestFullscreen();
         }
+
+        // 1. Dedicated Paste Button (Reads Windows Clipboard)
+        async function pasteClipboard() {
+            if (!emulator) return;
+
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text && typeof emulator.keyboard_send_text === "function") {
+                    emulator.keyboard_send_text(text);
+                }
+            } catch (err) {
+                // Fallback if browser blocks automatic clipboard access:
+                const text = prompt("Paste your command or text here:");
+                if (text && typeof emulator.keyboard_send_text === "function") {
+                    emulator.keyboard_send_text(text);
+                }
+            }
+        }
+
+        // 2. Global Ctrl+V / Right-Click Paste Listener
+        window.addEventListener("paste", function (e) {
+            if (!emulator) return;
+
+            // Don't intercept if typing in a normal file/text input
+            const active = document.activeElement;
+            if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") &&
+                active !== document.querySelector("#screen_container textarea")) {
+                return;
+            }
+
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData("text");
+            if (text && typeof emulator.keyboard_send_text === "function") {
+                emulator.keyboard_send_text(text);
+            }
+        });
     </script>
 </body>
 

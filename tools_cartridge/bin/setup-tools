@@ -1,0 +1,5 @@
+#!/bin/sh
+# Automatically adds our tools folder to the system PATH
+export PATH=$PATH:/tools/bin
+echo "CherieOS Tools loaded successfully into PATH!"
+echo "Available tools: sysinfo"
